@@ -1,204 +1,394 @@
 'use client';
 
-import { useState } from 'react';
-import { medicalFacilities, filterFacilities, type MedicalFacility } from '@/lib/data/medical-facilities';
+import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+import { type Doctor, type Specialty, getDoctorsNearLocation } from '@/utils/doctor-utils';
+
+// Dynamically import Leaflet Map with no SSR
+// This approach prevents any Leaflet code from running during SSR
+const MapComponent = dynamic(
+  () => import('@/components/MapComponent').then(mod => mod.default),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center p-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading map and locating you...</p>
+        </div>
+      </div>
+    )
+  }
+);
 
 export default function MedicalDirectory() {
-  const [facilityType, setFacilityType] = useState<string>('all');
-  const [governmentOnly, setGovernmentOnly] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filteredFacilities, setFilteredFacilities] = useState<MedicalFacility[]>(medicalFacilities);
+  // Always declare all state hooks at the top level
+  const [center, setCenter] = useState<[number, number]>([37.7749, -122.4194]);
+  const [zoom, setZoom] = useState(13);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(true);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [searchRadius, setSearchRadius] = useState(10); // km
+  const [specialty, setSpecialty] = useState<Specialty | ''>('');
+  const [selectedSpecialty, setSelectedSpecialty] = useState<Specialty | "all">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [mapReady, setMapReady] = useState(false);
 
-  const handleSearch = () => {
-    const results = filterFacilities(
-      facilityType === 'all' ? undefined : facilityType,
-      governmentOnly,
-      searchQuery
-    );
-    setFilteredFacilities(results);
-  };
+  // Specialties for the filter dropdown
+  const specialties: Specialty[] = [
+    'Cardiology',
+    'Dermatology',
+    'Endocrinology',
+    'Family Medicine',
+    'Gastroenterology',
+    'General Practice',
+    'Gynecology',
+    'Neurology',
+    'Oncology',
+    'Orthopedics',
+    'Pediatrics',
+    'Psychiatry',
+    'Radiology',
+    'Surgery',
+    'Urology',
+    'Other'
+  ];
 
-  const resetFilters = () => {
-    setFacilityType('all');
-    setGovernmentOnly(false);
-    setSearchQuery('');
-    setFilteredFacilities(medicalFacilities);
-  };
-
-  // Get facility type icon
-  const getFacilityIcon = (type: string) => {
-    switch (type) {
-      case 'hospital':
-        return '🏥';
-      case 'clinic':
-        return '👨‍⚕️';
-      case 'pharmacy':
-        return '💊';
-      case 'laboratory':
-        return '🔬';
-      case 'ambulance':
-        return '🚑';
-      default:
-        return '🏥';
+  // Function to fetch doctors data
+  const fetchDoctors = async (lat: number, lng: number, radius: number, specialty?: Specialty) => {
+    setLoading(true);
+    try {
+      const results = await getDoctorsNearLocation(lat, lng, radius, specialty);
+      setDoctors(results);
+    } catch (error) {
+      console.error('Error fetching doctors:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <main className="min-h-screen p-6 md:p-12 bg-gray-50">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h1 className="text-3xl font-bold text-purple-600 mb-4">Medical Directory</h1>
-          <p className="text-gray-600 mb-8">
-            Find hospitals, clinics, pharmacies, laboratories, and ambulance services in your area.
-          </p>
+  // Get user's location on component mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setMapReady(true);
+      
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            setUserLocation([latitude, longitude]);
+            setLoadingLocation(false);
+            fetchDoctors(latitude, longitude, searchRadius, specialty || undefined);
+          },
+          (error) => {
+            console.error("Error getting location:", error);
+            // Default to NYC if location access is denied
+            setUserLocation([40.7128, -74.0060]);
+            setLoadingLocation(false);
+            fetchDoctors(40.7128, -74.0060, searchRadius, specialty || undefined);
+          }
+        );
+      } else {
+        console.error("Geolocation is not supported by this browser.");
+        setUserLocation([40.7128, -74.0060]);
+        setLoadingLocation(false);
+        fetchDoctors(40.7128, -74.0060, searchRadius, specialty || undefined);
+      }
+    }
+  }, []);
 
-          {/* Search and Filter Section */}
-          <div className="bg-purple-50 p-6 rounded-lg mb-8">
-            <h2 className="text-xl font-semibold text-purple-700 mb-4">Search & Filter</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-gray-700 text-sm font-medium mb-2">
-                  Facility Type
-                </label>
-                <select 
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                  value={facilityType}
-                  onChange={(e) => setFacilityType(e.target.value)}
-                >
-                  <option value="all">All Facilities</option>
-                  <option value="hospital">Hospitals</option>
-                  <option value="clinic">Clinics</option>
-                  <option value="pharmacy">Pharmacies</option>
-                  <option value="laboratory">Laboratories</option>
-                  <option value="ambulance">Ambulance Services</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-gray-700 text-sm font-medium mb-2">
-                  Search by Name, Address, or Service
-                </label>
-                <input 
-                  type="text" 
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                  placeholder="e.g., Emergency Care, Main Street..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              
-              <div className="flex items-end">
-                <div className="mr-4">
-                  <label className="flex items-center text-gray-700 text-sm font-medium">
-                    <input 
-                      type="checkbox" 
-                      className="h-4 w-4 text-purple-600 rounded mr-2"
-                      checked={governmentOnly}
-                      onChange={(e) => setGovernmentOnly(e.target.checked)}
-                    />
-                    Government Supported Only
-                  </label>
-                </div>
-              </div>
+  // Fetch doctors when filters change
+  useEffect(() => {
+    if (userLocation) {
+      fetchDoctors(userLocation[0], userLocation[1], searchRadius, specialty || undefined);
+    } else if (center) {
+      fetchDoctors(center[0], center[1], searchRadius, specialty || undefined);
+    }
+  }, [searchRadius, specialty, userLocation, center]);
+
+  // Generate star rating display
+  const renderStars = (rating: number) => {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+    
+    // Add full stars
+    for (let i = 0; i < fullStars; i++) {
+      stars.push(<span key={`full-${i}`} className="text-yellow-400">★</span>);
+    }
+    
+    // Add half star if needed
+    if (hasHalfStar) {
+      stars.push(<span key="half" className="text-yellow-400">★</span>);
+    }
+    
+    // Add empty stars
+    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+    for (let i = 0; i < emptyStars; i++) {
+      stars.push(<span key={`empty-${i}`} className="text-gray-300">★</span>);
+    }
+    
+    return stars;
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+      <div className="container mx-auto px-4 py-8">
+        <header className="mb-8">
+          <h1 className="text-3xl font-bold text-blue-800 mb-2">Find Healthcare Providers</h1>
+          <p className="text-gray-600 mb-6">
+            Locate doctors and specialists near you with our interactive map
+          </p>
+          
+          {/* Filters */}
+          <div className="flex flex-wrap gap-4 mb-6">
+            <div className="w-full md:w-auto">
+              <label htmlFor="specialty" className="block text-sm font-medium text-gray-700 mb-1">
+                Specialty
+              </label>
+              <select
+                id="specialty"
+                value={specialty}
+                onChange={(e) => setSpecialty(e.target.value as Specialty | '')}
+                className="block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All Specialties</option>
+                {specialties.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
             </div>
             
-            <div className="mt-6 flex space-x-4">
-              <button 
-                onClick={handleSearch}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md"
+            <div className="w-full md:w-auto">
+              <label htmlFor="radius" className="block text-sm font-medium text-gray-700 mb-1">
+                Search Radius (km)
+              </label>
+              <select
+                id="radius"
+                value={searchRadius}
+                onChange={(e) => setSearchRadius(Number(e.target.value))}
+                className="block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
               >
-                Search
-              </button>
-              <button 
-                onClick={resetFilters}
-                className="px-4 py-2 border border-gray-300 hover:bg-gray-100 rounded-md text-gray-700"
-              >
-                Reset Filters
-              </button>
+                <option value={5}>5 km</option>
+                <option value={10}>10 km</option>
+                <option value={25}>25 km</option>
+                <option value={50}>50 km</option>
+              </select>
             </div>
           </div>
+        </header>
 
-          {/* Results Section */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              {filteredFacilities.length} {filteredFacilities.length === 1 ? 'Facility' : 'Facilities'} Found
-            </h2>
-            
-            {filteredFacilities.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredFacilities.map(facility => (
-                  <div key={facility.id} className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between bg-gray-50 p-4 border-b">
-                      <div className="flex items-center">
-                        <span className="text-2xl mr-3">{getFacilityIcon(facility.type)}</span>
-                        <div>
-                          <h3 className="text-lg font-semibold">{facility.name}</h3>
-                          <p className="text-sm text-gray-500 capitalize">{facility.type}</p>
-                        </div>
-                      </div>
-                      {facility.governmentSupported && (
-                        <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                          Government Supported
-                        </span>
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <p className="text-gray-600 mb-2">
-                        <span className="font-medium">Address:</span> {facility.address}
-                      </p>
-                      <p className="text-gray-600 mb-2">
-                        <span className="font-medium">Phone:</span> {facility.phone}
-                      </p>
-                      <p className="text-gray-600 mb-2">
-                        <span className="font-medium">Hours:</span> {facility.openingHours}
-                      </p>
-                      
-                      {facility.description && (
-                        <p className="text-gray-600 mb-4 italic">
-                          {facility.description}
-                        </p>
-                      )}
-                      
-                      <div className="mt-4">
-                        <h4 className="font-medium text-gray-800 mb-2">Services:</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {facility.services.map((service, index) => (
-                            <span key={index} className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                              {service}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div className="mt-4 flex justify-between">
-                        <a 
-                          href={`tel:${facility.phone}`}
-                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md inline-flex items-center"
-                        >
-                          <span>Call</span>
-                        </a>
-                        <a 
-                          href={`https://maps.google.com/?q=${facility.location.latitude},${facility.location.longitude}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-2 border border-purple-600 text-purple-600 hover:bg-purple-50 rounded-md inline-flex items-center"
-                        >
-                          <span>View on Map</span>
-                        </a>
-                      </div>
-                    </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Map Section */}
+          <div className="md:col-span-2 bg-white rounded-lg shadow-lg overflow-hidden h-[600px]">
+            {mapReady && (
+              <MapComponent
+                center={userLocation || center}
+                zoom={zoom}
+                doctors={doctors}
+                userLocation={userLocation}
+                onDoctorSelect={setSelectedDoctor}
+              />
+            )}
+          </div>
+          
+          {/* Doctor List/Details Section */}
+          <div className="md:col-span-1">
+            {selectedDoctor ? (
+              // Doctor details
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <h2 className="text-xl font-bold text-blue-800">{selectedDoctor.name}</h2>
+                  <button 
+                    onClick={() => setSelectedDoctor(null)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                {selectedDoctor.image && (
+                  <div className="mb-4 flex justify-center">
+                    <img 
+                      src={selectedDoctor.image} 
+                      alt={selectedDoctor.name} 
+                      className="w-32 h-32 rounded-full object-cover border-2 border-blue-200"
+                    />
                   </div>
-                ))}
+                )}
+                
+                <div className="mb-4 text-center">
+                  <div className="flex items-center justify-center space-x-1 text-lg mb-1">
+                    {renderStars(selectedDoctor.averageRating)}
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {selectedDoctor.averageRating.toFixed(1)} ({selectedDoctor.totalRatings} ratings)
+                  </p>
+                </div>
+                
+                <div className="space-y-3">
+                  <p className="text-gray-800">
+                    <span className="font-semibold">Specialty:</span> {selectedDoctor.specialty}
+                  </p>
+                  <p className="text-gray-800">
+                    <span className="font-semibold">Experience:</span> {selectedDoctor.experience} years
+                  </p>
+                  {selectedDoctor.hospital && (
+                    <p className="text-gray-800">
+                      <span className="font-semibold">Hospital:</span> {selectedDoctor.hospital}
+                    </p>
+                  )}
+                  <p className="text-gray-800">
+                    <span className="font-semibold">Address:</span> {selectedDoctor.address}
+                  </p>
+                  {selectedDoctor.contact.phone && (
+                    <p className="text-gray-800">
+                      <span className="font-semibold">Phone:</span> {selectedDoctor.contact.phone}
+                    </p>
+                  )}
+                  <p className="text-gray-800">
+                    <span className="font-semibold">Languages:</span> {selectedDoctor.languages.join(', ')}
+                  </p>
+                  {selectedDoctor.availability && (
+                    <div>
+                      <p className="text-gray-800 font-semibold">Availability:</p>
+                      <p className="text-gray-700">
+                        {selectedDoctor.availability.days.join(', ')}
+                        <br />
+                        {selectedDoctor.availability.hours}
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-gray-800">
+                    <span className="font-semibold">Accepting New Patients:</span> {selectedDoctor.acceptingNewPatients ? 'Yes' : 'No'}
+                  </p>
+                </div>
+
+                {selectedDoctor.aiEvaluation && (
+                  <div className="mt-6 bg-blue-50 p-4 rounded-lg">
+                    <h3 className="font-bold text-blue-800 mb-2">AI HealthBridge Evaluation</h3>
+                    <div className="flex items-center mb-2">
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div 
+                          className="bg-blue-600 h-2.5 rounded-full" 
+                          style={{ width: `${selectedDoctor.aiEvaluation.score}%` }}
+                        ></div>
+                      </div>
+                      <span className="ml-2 text-sm font-medium text-gray-700">
+                        {selectedDoctor.aiEvaluation.score}/100
+                      </span>
+                    </div>
+                    
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Strengths:</p>
+                      <ul className="list-disc list-inside text-sm text-gray-600">
+                        {selectedDoctor.aiEvaluation.strengths.map((strength, index) => (
+                          <li key={index}>{strength}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    
+                    {selectedDoctor.aiEvaluation.areas_for_improvement && (
+                      <div className="mt-2">
+                        <p className="text-sm font-medium text-gray-700">Areas for improvement:</p>
+                        <ul className="list-disc list-inside text-sm text-gray-600">
+                          {selectedDoctor.aiEvaluation.areas_for_improvement.map((area, index) => (
+                            <li key={index}>{area}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    <p className="text-xs text-gray-500 mt-2">
+                      Last updated: {selectedDoctor.aiEvaluation.last_updated.toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+                
+                <div className="mt-6 flex space-x-2">
+                  <button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition duration-200">
+                    Book Appointment
+                  </button>
+                  <button className="flex-1 bg-white hover:bg-gray-100 text-blue-600 border border-blue-600 py-2 px-4 rounded-md transition duration-200">
+                    Save to Favorites
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                <p className="text-gray-600 mb-2">No facilities match your search criteria.</p>
-                <p className="text-gray-500">Try adjusting your filters or search query.</p>
+              // Doctor list
+              <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                <div className="p-4 bg-blue-50 border-b border-blue-100">
+                  <h3 className="font-bold text-blue-800">
+                    {loading 
+                      ? 'Searching for doctors...' 
+                      : `Found ${doctors.length} doctor${doctors.length !== 1 ? 's' : ''}`
+                    }
+                  </h3>
+                </div>
+                
+                {loading ? (
+                  <div className="p-8 text-center">
+                    <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Searching for healthcare providers...</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-200 max-h-[500px] overflow-y-auto">
+                    {doctors.length === 0 ? (
+                      <div className="p-6 text-center text-gray-500">
+                        No doctors found matching your criteria. Try expanding your search radius or changing the specialty.
+                      </div>
+                    ) : (
+                      doctors.map((doctor) => (
+                        <div 
+                          key={doctor.id} 
+                          className="p-4 hover:bg-blue-50 cursor-pointer transition duration-150"
+                          onClick={() => setSelectedDoctor(doctor)}
+                        >
+                          <div className="flex items-start">
+                            {doctor.image && (
+                              <img 
+                                src={doctor.image} 
+                                alt={doctor.name} 
+                                className="w-12 h-12 rounded-full object-cover mr-4"
+                              />
+                            )}
+                            <div className="flex-1">
+                              <h3 className="font-medium text-gray-900">{doctor.name}</h3>
+                              <p className="text-sm text-gray-600">{doctor.specialty}</p>
+                              <div className="flex items-center mt-1">
+                                <div className="flex text-yellow-400 text-sm">
+                                  {renderStars(doctor.averageRating)}
+                                </div>
+                                <span className="ml-1 text-xs text-gray-500">
+                                  ({doctor.totalRatings})
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right text-xs text-gray-500">
+                              <div className={`font-medium ${doctor.acceptingNewPatients ? 'text-green-600' : 'text-red-600'}`}>
+                                {doctor.acceptingNewPatients ? 'Accepting patients' : 'Not accepting patients'}
+                              </div>
+                              {doctor.consultationFee && (
+                                <div className="mt-1">
+                                  ${doctor.consultationFee}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 } 

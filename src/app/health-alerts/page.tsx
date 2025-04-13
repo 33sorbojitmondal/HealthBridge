@@ -1,278 +1,304 @@
 'use client';
 
-import { useState } from 'react';
-import Image from 'next/image';
-import { healthAlerts, filterAlerts, type HealthAlert } from '@/lib/data/health-alerts';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+
+interface Alert {
+  id: string;
+  title: string;
+  description: string;
+  type: 'emergency' | 'warning' | 'info';
+  date: string;
+  region?: string;
+  contact?: string;
+  source?: string;
+  link?: string;
+}
 
 export default function HealthAlerts() {
-  const [alertType, setAlertType] = useState<string>('all');
-  const [region, setRegion] = useState<string>('all');
-  const [urgency, setUrgency] = useState<string>('all');
-  const [filteredAlerts, setFilteredAlerts] = useState<HealthAlert[]>(
-    // Initialize with alerts sorted by date
-    [...healthAlerts].sort((a, b) => 
-      new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
-    )
-  );
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [filteredAlerts, setFilteredAlerts] = useState<Alert[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState<string>('all');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleSearch = () => {
-    const results = filterAlerts(
-      alertType === 'all' ? undefined : alertType,
-      region === 'all' ? undefined : region,
-      urgency === 'all' ? undefined : urgency
-    );
+  useEffect(() => {
+    // Simulate fetching data
+    setTimeout(() => {
+      const mockAlerts: Alert[] = [
+        {
+          id: '1',
+          title: 'COVID-19 Vaccination Clinic',
+          description: 'Free COVID-19 vaccinations available at Central Community Center this weekend. No appointment necessary.',
+          type: 'info',
+          date: '2023-04-15',
+          region: 'Downtown',
+          contact: 'Phone: +1-800-555-1234',
+          source: 'Department of Health',
+          link: 'https://example.com/covid-clinic'
+        },
+        {
+          id: '2',
+          title: 'Measles Outbreak in West District',
+          description: 'Several cases of measles have been reported in West District schools. Please ensure your children are vaccinated and watch for symptoms including rash, fever, and cough.',
+          type: 'warning',
+          date: '2023-04-12',
+          region: 'West District',
+          contact: '+1-800-555-5678',
+          source: 'Center for Disease Control'
+        },
+        {
+          id: '3',
+          title: 'Heat Wave Advisory',
+          description: 'Extreme temperatures expected over the next week. Stay hydrated and limit outdoor activities between 10am and 4pm.',
+          type: 'warning',
+          date: '2023-04-10',
+          region: 'Citywide',
+          contact: 'Emergency: +1-800-555-9101',
+          source: 'National Weather Service'
+        },
+        {
+          id: '4',
+          title: 'Food Recall: Golden Brand Peanut Butter',
+          description: 'Golden Brand Peanut Butter 16oz jars with expiration dates between May 1, 2023 and August 1, 2023 have been recalled due to potential Salmonella contamination.',
+          type: 'emergency',
+          date: '2023-04-08',
+          region: 'National',
+          contact: 'Consumer Hotline: +1-800-555-7890',
+          source: 'Food Safety Authority',
+          link: 'https://example.com/peanut-recall'
+        },
+        {
+          id: '5',
+          title: 'Free Health Screening Event',
+          description: 'Get free blood pressure, cholesterol, and diabetes screenings at the Community Health Fair on April 20.',
+          type: 'info',
+          date: '2023-04-05',
+          region: 'South Side',
+          contact: '+1-800-555-4321',
+          source: 'Community Health Network'
+        },
+        {
+          id: '6',
+          title: 'Seasonal Flu Update',
+          description: 'Flu cases rising earlier than expected this season. Flu shots are now available at all major pharmacies and health clinics.',
+          type: 'info',
+          date: '2023-04-01',
+          region: 'Citywide',
+          source: 'Department of Health'
+        }
+      ];
+      setAlerts(mockAlerts);
+      setFilteredAlerts(mockAlerts);
+      setIsLoading(false);
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    let results = alerts;
+    
+    // Filter by search term
+    if (searchTerm) {
+      results = results.filter(alert => 
+        alert.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        alert.description.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Filter by type
+    if (filterType !== 'all') {
+      results = results.filter(alert => alert.type === filterType);
+    }
+    
     setFilteredAlerts(results);
-  };
+  }, [searchTerm, filterType, alerts]);
 
-  const resetFilters = () => {
-    setAlertType('all');
-    setRegion('all');
-    setUrgency('all');
-    setFilteredAlerts(
-      [...healthAlerts].sort((a, b) => 
-        new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
-      )
-    );
-  };
-
-  // Get all available regions from health alerts
-  const regions = Array.from(
-    new Set(healthAlerts.map(alert => alert.region))
-  ).sort();
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    });
-  };
-
-  // Get alert type display name
-  const getAlertTypeDisplay = (type: string) => {
+  const getAlertTypeStyles = (type: string) => {
     switch (type) {
-      case 'vaccination':
-        return 'Vaccination Drive';
-      case 'disease_outbreak':
-        return 'Disease Outbreak';
-      case 'health_camp':
-        return 'Health Camp';
-      case 'awareness_campaign':
-        return 'Awareness Campaign';
+      case 'emergency':
+        return 'bg-red-100 border-red-500 text-red-800';
+      case 'warning':
+        return 'bg-yellow-100 border-yellow-500 text-yellow-800';
+      case 'info':
       default:
-        return type.replace('_', ' ');
+        return 'bg-blue-100 border-blue-500 text-blue-800';
     }
   };
 
-  // Get urgency badge color
-  const getUrgencyBadgeClass = (urgency: string) => {
-    switch (urgency) {
-      case 'high':
-        return 'bg-red-100 text-red-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'low':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  // Get alert type badge color
-  const getAlertTypeBadgeClass = (type: string) => {
+  const getAlertBadgeStyles = (type: string) => {
     switch (type) {
-      case 'vaccination':
-        return 'bg-blue-100 text-blue-800';
-      case 'disease_outbreak':
-        return 'bg-red-100 text-red-800';
-      case 'health_camp':
-        return 'bg-green-100 text-green-800';
-      case 'awareness_campaign':
-        return 'bg-purple-100 text-purple-800';
+      case 'emergency':
+        return 'bg-red-600 text-white';
+      case 'warning':
+        return 'bg-yellow-600 text-white';
+      case 'info':
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-blue-600 text-white';
     }
+  };
+
+  // Function to safely extract phone number from contact string
+  const getPhoneNumber = (contact: string) => {
+    if (!contact) return null;
+    
+    // If the contact string contains a colon, try to extract the part after it
+    if (contact.includes(':')) {
+      const parts = contact.split(':');
+      // Make sure there's actually a second part after splitting before trying to trim
+      return parts.length > 1 && parts[1] ? parts[1].trim() : null;
+    } 
+    
+    // If it's just a phone number without label
+    return contact.trim();
   };
 
   return (
-    <main className="min-h-screen p-6 md:p-12 bg-gray-50">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h1 className="text-3xl font-bold text-yellow-600 mb-4">Health Alerts</h1>
-          <p className="text-gray-600 mb-8">
-            Stay informed about health campaigns, disease outbreaks, vaccination drives, and other health initiatives in your area.
-          </p>
-
-          {/* Search and Filter Section */}
-          <div className="bg-yellow-50 p-6 rounded-lg mb-8">
-            <h2 className="text-xl font-semibold text-yellow-700 mb-4">Filter Alerts</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-gray-700 text-sm font-medium mb-2">
-                  Alert Type
-                </label>
-                <select 
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
-                  value={alertType}
-                  onChange={(e) => setAlertType(e.target.value)}
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-8 animate-fadeIn">
+        <h1 className="text-3xl md:text-4xl font-bold mb-4">Health Alerts</h1>
+        <p className="text-gray-600">Stay informed about important health alerts and announcements in your area.</p>
+      </div>
+      
+      {/* Search and Filter Controls */}
+      <div className="bg-white rounded-xl shadow-md p-4 mb-8 animate-fadeIn" style={{ animationDelay: '200ms' }}>
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-grow">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search alerts..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 absolute left-3 top-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              {searchTerm && (
+                <button 
+                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                  onClick={() => setSearchTerm('')}
                 >
-                  <option value="all">All Types</option>
-                  <option value="vaccination">Vaccination Drives</option>
-                  <option value="disease_outbreak">Disease Outbreaks</option>
-                  <option value="health_camp">Health Camps</option>
-                  <option value="awareness_campaign">Awareness Campaigns</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-gray-700 text-sm font-medium mb-2">
-                  Region
-                </label>
-                <select 
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
-                  value={region}
-                  onChange={(e) => setRegion(e.target.value)}
-                >
-                  <option value="all">All Regions</option>
-                  {regions.map(region => (
-                    <option key={region} value={region}>{region}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-gray-700 text-sm font-medium mb-2">
-                  Urgency Level
-                </label>
-                <select 
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
-                  value={urgency}
-                  onChange={(e) => setUrgency(e.target.value)}
-                >
-                  <option value="all">All Urgency Levels</option>
-                  <option value="high">High Urgency</option>
-                  <option value="medium">Medium Urgency</option>
-                  <option value="low">Low Urgency</option>
-                </select>
-              </div>
-            </div>
-            
-            <div className="mt-6 flex space-x-4">
-              <button 
-                onClick={handleSearch}
-                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-md"
-              >
-                Apply Filters
-              </button>
-              <button 
-                onClick={resetFilters}
-                className="px-4 py-2 border border-gray-300 hover:bg-gray-100 rounded-md text-gray-700"
-              >
-                Reset Filters
-              </button>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
-
-          {/* Results Section */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              {filteredAlerts.length} {filteredAlerts.length === 1 ? 'Alert' : 'Alerts'} Found
-            </h2>
-            
-            {filteredAlerts.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {filteredAlerts.map(alert => (
-                  <div key={alert.id} className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-                    {alert.imageUrl && (
-                      <div className="relative h-48 w-full">
-                        <Image 
-                          src={alert.imageUrl} 
-                          alt={alert.title}
-                          fill
-                          style={{ objectFit: 'cover' }}
-                        />
-                      </div>
-                    )}
-                    <div className="p-4">
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getAlertTypeBadgeClass(alert.type)}`}>
-                          {getAlertTypeDisplay(alert.type)}
-                        </span>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getUrgencyBadgeClass(alert.urgency)}`}>
-                          {alert.urgency.charAt(0).toUpperCase() + alert.urgency.slice(1)} Urgency
-                        </span>
-                      </div>
-                      
-                      <h3 className="text-lg font-semibold mb-2">{alert.title}</h3>
-                      
-                      <p className="text-gray-600 mb-4">
-                        {alert.description}
-                      </p>
-                      
-                      <div className="space-y-2 text-sm text-gray-600">
-                        <p>
-                          <span className="font-medium">Region:</span> {alert.region}
-                        </p>
-                        <p>
-                          <span className="font-medium">Date:</span> {formatDate(alert.startDate)}
-                          {alert.endDate && ` to ${formatDate(alert.endDate)}`}
-                        </p>
-                        {alert.location && (
-                          <p>
-                            <span className="font-medium">Location:</span> {alert.location}
-                          </p>
-                        )}
-                        {alert.contact && (
-                          <p>
-                            <span className="font-medium">Contact:</span> {alert.contact}
-                          </p>
-                        )}
-                      </div>
-                      
-                      <div className="mt-4 flex justify-between">
-                        {alert.contact && alert.contact.includes('+') && (
-                          <a 
-                            href={`tel:${alert.contact.split(':')[1].trim()}`}
-                            className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md inline-flex items-center"
-                          >
-                            <span>Call</span>
-                          </a>
-                        )}
-                        <button 
-                          className="px-4 py-2 border border-yellow-600 text-yellow-600 hover:bg-yellow-50 rounded-md inline-flex items-center"
-                        >
-                          <span>Share Alert</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                <p className="text-gray-600 mb-2">No health alerts match your filter criteria.</p>
-                <p className="text-gray-500">Try adjusting your filters to see more results.</p>
-              </div>
-            )}
-          </div>
-          
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
-              <div className="flex">
-                <div>
-                  <p className="font-medium text-blue-800">Stay Informed</p>
-                  <p className="text-sm text-blue-700 mt-1">
-                    Enable notifications to receive timely updates about health alerts in your area.
-                    Your health and safety are important to us.
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="w-full md:w-auto">
+            <select
+              className="w-full md:w-48 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+            >
+              <option value="all">All Alerts</option>
+              <option value="emergency">Emergency</option>
+              <option value="warning">Warning</option>
+              <option value="info">Information</option>
+            </select>
           </div>
         </div>
       </div>
-    </main>
+      
+      {/* Alerts List */}
+      <div className="space-y-6 animate-fadeIn" style={{ animationDelay: '400ms' }}>
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading health alerts...</p>
+          </div>
+        ) : filteredAlerts.length === 0 ? (
+          <div className="text-center py-12 bg-gray-50 rounded-xl">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 className="text-xl font-semibold mb-2">No alerts found</h3>
+            <p className="text-gray-600">Try adjusting your search or filters</p>
+          </div>
+        ) : (
+          filteredAlerts.map((alert) => (
+            <div 
+              key={alert.id} 
+              className={`border-l-4 rounded-lg shadow-md overflow-hidden animate-fadeIn ${getAlertTypeStyles(alert.type)}`}
+              style={{ animationDelay: `${parseInt(alert.id) * 100}ms` }}
+            >
+              <div className="p-5">
+                <div className="flex flex-wrap items-center gap-3 mb-3">
+                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${getAlertBadgeStyles(alert.type)}`}>
+                    {alert.type.charAt(0).toUpperCase() + alert.type.slice(1)}
+                  </span>
+                  {alert.region && (
+                    <span className="text-xs bg-gray-200 text-gray-800 px-2 py-1 rounded-full">
+                      {alert.region}
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-600 ml-auto">
+                    {new Date(alert.date).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    })}
+                  </span>
+                </div>
+                <h3 className="text-lg font-semibold mb-2">{alert.title}</h3>
+                <p className="text-gray-700 mb-4">{alert.description}</p>
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  {alert.source && (
+                    <span className="text-gray-600">
+                      <strong>Source:</strong> {alert.source}
+                    </span>
+                  )}
+                  {alert.link && (
+                    <a 
+                      href={alert.link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      More information
+                    </a>
+                  )}
+                </div>
+                {alert.contact && (
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {alert.contact.includes('+') && (
+                      <a 
+                        href={`tel:${getPhoneNumber(alert.contact) || ''}`}
+                        className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md inline-flex items-center"
+                      >
+                        <span>Call</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      
+      {/* Subscription Box */}
+      <div className="mt-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl overflow-hidden shadow-lg animate-fadeIn" style={{ animationDelay: '600ms' }}>
+        <div className="p-6 md:p-8 text-white">
+          <h2 className="text-2xl font-bold mb-3">Stay Updated</h2>
+          <p className="mb-6 text-blue-100">Receive health alerts directly via email or SMS. We'll only notify you about alerts in your region.</p>
+          <form className="space-y-4 md:space-y-0 md:flex md:gap-4">
+            <input
+              type="email"
+              placeholder="Your email address"
+              className="w-full md:flex-1 px-4 py-3 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button type="button" className="w-full md:w-auto whitespace-nowrap px-6 py-3 bg-white text-blue-600 font-medium rounded-lg hover:bg-blue-50 transition-colors duration-300 btn-animated">
+              Subscribe
+            </button>
+          </form>
+          <p className="mt-4 text-sm text-blue-200">You can unsubscribe anytime. We respect your privacy.</p>
+        </div>
+      </div>
+    </div>
   );
 } 
